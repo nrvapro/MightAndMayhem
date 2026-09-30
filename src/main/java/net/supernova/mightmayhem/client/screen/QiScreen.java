@@ -21,9 +21,12 @@ public class QiScreen extends Screen {
     private static final int COLOR_BAR_BG      = 0xFF3A1216; // empty part of the bar
     private static final int COLOR_BAR_FILL    = 0xFFD62828; // filled part of the bar
     private static final int COLOR_BAR_SHINE   = 0xFFFF6B6B; // thin highlight on top of the fill
+    private static final int COLOR_BAR_LABEL   = 0xFFE8A0A0; // next realm name at the end of the bar
     private static final int COLOR_NEXT_REALM  = 0xFFC48A8A; // "Next: ..."
-    private static final int COLOR_BONUS       = 0xFFFF9E80; // bonus lines
+    private static final int COLOR_BONUS       = 0xFFFF9E80; // bonus lines + first realm message
     private static final int COLOR_HINT        = 0xFF9A5C5C; // "Press B to close"
+
+    private static final String FIRST_REALM_MESSAGE = "Cultivate to reach your first realm !";
 
     private final int qi;
     private final int maxQi;
@@ -45,6 +48,27 @@ public class QiScreen extends Screen {
         g.pose().popPose();
     }
 
+    // Draws text whose RIGHT edge is at rightX
+    private void drawTextRight(GuiGraphics g, String text, int rightX, float y, float scale, int color) {
+        g.pose().pushPose();
+        g.pose().translate((float) rightX, y, 0.0F);
+        g.pose().scale(scale, scale, 1.0F);
+        g.drawString(this.font, text, -this.font.width(text), 0, color);
+        g.pose().popPose();
+    }
+
+    // Draws the Qi bar
+    private void drawBar(GuiGraphics g, int barX, int barY, int barW, int barH) {
+        g.fill(barX - 1, barY - 1, barX + barW + 1, barY + barH + 1, COLOR_BAR_BORDER);
+        g.fill(barX, barY, barX + barW, barY + barH, COLOR_BAR_BG);
+        int filled = maxQi > 0 ? (int) ((long) barW * qi / maxQi) : 0;
+        filled = Math.min(filled, barW);
+        if (filled > 0) {
+            g.fill(barX, barY, barX + filled, barY + barH, COLOR_BAR_FILL);
+            g.fill(barX, barY, barX + filled, barY + 2, COLOR_BAR_SHINE);
+        }
+    }
+
     @Override
     public void render(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
         // Full-screen see-through tint (we skip renderBackground so the world stays visible)
@@ -59,63 +83,73 @@ public class QiScreen extends Screen {
         g.fill(this.width - m - t, m, this.width - m, this.height - m, COLOR_BORDER);
 
         Realm realm = Realm.byLevel(realmLevel);
+        Realm next = realm.next();
+        boolean noRealmYet = realm.getLevel() == 0; // still Mortal
         boolean showHearts = realm.getBonusHearts() > 0;
 
         // Shrinks everything on small windows / big GUI scales so it always fits
         float k = Math.min(1.0F, this.height / 300.0F);
-        float total = (showHearts ? 226.0F : 210.0F) * k;
-        float y = (this.height - total) / 2.0F;
         int cx = this.width / 2;
-
-        // Title + realm + Qi numbers
-        drawText(g, "Cultivation", cx, y, 3.0F * k, COLOR_TITLE);
-        y += 36 * k;
-        drawText(g, "Realm: " + realm.getDisplayName(), cx, y, 2.0F * k, COLOR_REALM);
-        y += 28 * k;
-        drawText(g, "Qi: " + qi + " / " + maxQi, cx, y, 1.5F * k, COLOR_QI_TEXT);
-        y += 24 * k;
-
-        // Qi bar (wide)
         int barW = Math.min(this.width - 100, 360);
         int barH = Math.max(8, Math.round(14 * k));
         int barX = cx - barW / 2;
-        int barY = Math.round(y);
-        g.fill(barX - 1, barY - 1, barX + barW + 1, barY + barH + 1, COLOR_BAR_BORDER);
-        g.fill(barX, barY, barX + barW, barY + barH, COLOR_BAR_BG);
-        int filled = maxQi > 0 ? (int) ((long) barW * qi / maxQi) : 0;
-        filled = Math.min(filled, barW);
-        if (filled > 0) {
-            g.fill(barX, barY, barX + filled, barY + barH, COLOR_BAR_FILL);
-            g.fill(barX, barY, barX + filled, barY + 2, COLOR_BAR_SHINE);
-        }
-        y += barH + 16 * k;
 
-        // Next realm
-        Realm next = realm.next();
-        String nextText = next == null
-                ? "Highest realm reached"
-                : "Next: " + next.getDisplayName() + " at " + next.getQiRequired() + " Qi";
-        drawText(g, nextText, cx, y, 1.2F * k, COLOR_NEXT_REALM);
-        y += 34 * k;
+        if (noRealmYet) {
+            // Before the first realm: ONLY the message (plus the empty bar under it)
+            float msgScale = Math.min(2.0F * k,
+                    (this.width - 40) / (float) this.font.width(FIRST_REALM_MESSAGE));
+            float msgHeight = 9 * msgScale;
+            float gap = 24 * k;
+            float y = (this.height - (msgHeight + gap + barH)) / 2.0F;
 
-        // Bonuses
-        float bonusScale = 1.3F * k;
-        float step = 17 * k;
-        if (showHearts) {
-            drawText(g, "+" + realm.getBonusHearts() + " max hearts", cx, y, bonusScale, COLOR_BONUS);
+            drawText(g, FIRST_REALM_MESSAGE, cx, y, msgScale, COLOR_BONUS);
+            drawBar(g, barX, Math.round(y + msgHeight + gap), barW, barH);
+        } else {
+            float total = (showHearts ? 226.0F : 210.0F) * k;
+            float y = (this.height - total) / 2.0F;
+
+            // Title + realm + Qi numbers
+            drawText(g, "Cultivation", cx, y, 3.0F * k, COLOR_TITLE);
+            y += 36 * k;
+            drawText(g, "Realm: " + realm.getDisplayName(), cx, y, 2.0F * k, COLOR_REALM);
+            y += 28 * k;
+            drawText(g, "Qi: " + qi + " / " + maxQi, cx, y, 1.5F * k, COLOR_QI_TEXT);
+            y += 24 * k;
+
+            // Qi bar + name of the next realm at the end of the bar
+            int barY = Math.round(y);
+            drawBar(g, barX, barY, barW, barH);
+            if (next != null) {
+                drawTextRight(g, next.getDisplayName(), barX + barW, barY - 11 * k, 1.0F * k, COLOR_BAR_LABEL);
+            }
+            y += barH + 16 * k;
+
+            // Next realm requirement
+            String nextText = next == null
+                    ? "Highest realm reached"
+                    : "Next: " + next.getDisplayName() + " at " + next.getQiRequired() + " Qi";
+            drawText(g, nextText, cx, y, 1.2F * k, COLOR_NEXT_REALM);
+            y += 34 * k;
+
+            // Bonuses
+            float bonusScale = 1.3F * k;
+            float step = 17 * k;
+            if (showHearts) {
+                drawText(g, "+" + realm.getBonusHearts() + " max hearts", cx, y, bonusScale, COLOR_BONUS);
+                y += step;
+            }
+            drawText(g, "+" + String.format(Locale.ROOT, "%.1f", realm.getBonusDamage()) + " attack damage",
+                    cx, y, bonusScale, COLOR_BONUS);
             y += step;
+            drawText(g, "+" + Math.round(realm.getBonusSpeed() * 100) + "% movement speed",
+                    cx, y, bonusScale, COLOR_BONUS);
+            y += step;
+            drawText(g, Math.round(realm.getDamageReduction() * 100) + "% damage reduction",
+                    cx, y, bonusScale, COLOR_BONUS);
         }
-        drawText(g, "+" + String.format(Locale.ROOT, "%.1f", realm.getBonusDamage()) + " attack damage",
-                cx, y, bonusScale, COLOR_BONUS);
-        y += step;
-        drawText(g, "+" + Math.round(realm.getBonusSpeed() * 100) + "% movement speed",
-                cx, y, bonusScale, COLOR_BONUS);
-        y += step;
-        drawText(g, Math.round(realm.getDamageReduction() * 100) + "% damage reduction",
-                cx, y, bonusScale, COLOR_BONUS);
 
-        // Hint at the bottom
-        drawText(g, "Press B to close", cx, this.height - 28, 1.0F, COLOR_HINT);
+        // Hint (kept above the health/hotbar area)
+        drawText(g, "Press B to close", cx, this.height - 58, 1.0F, COLOR_HINT);
 
         super.render(g, mouseX, mouseY, partialTick);
     }
