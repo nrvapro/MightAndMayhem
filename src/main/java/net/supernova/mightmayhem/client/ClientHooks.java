@@ -8,4 +8,8 @@ public class ClientHooks {
     public static void openQiScreen(int qi, int maxQi, int realm) {
         Minecraft.getInstance().setScreen(new QiScreen(qi, maxQi, realm));
     }
+
+    public static void showBreakthrough(String realmName, String stageName) {
+        BreakthroughOverlay.show(realmName, stageName);
+    }
 }

@@ -5,6 +5,7 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import net.supernova.mightmayhem.client.KeyBinding;
 import net.supernova.mightmayhem.qi.Realm;
+import net.supernova.mightmayhem.qi.RealmStage;
 
 import java.util.Locale;
 
@@ -25,6 +26,8 @@ public class QiScreen extends Screen {
     private static final int COLOR_NEXT_REALM  = 0xFFC48A8A; // "Next: ..."
     private static final int COLOR_BONUS       = 0xFFFF9E80; // bonus lines + first realm message
     private static final int COLOR_HINT        = 0xFF9A5C5C; // "Press B to close"
+    private static final int COLOR_STAGE_TICK    = 0xFF8A4A4A; // stage marker not reached yet
+    private static final int COLOR_STAGE_REACHED = 0xFFFFC857; // stage marker already reached
 
     private static final String FIRST_REALM_MESSAGE = "Cultivate to reach your first realm !";
 
@@ -69,6 +72,18 @@ public class QiScreen extends Screen {
         }
     }
 
+    // Draws one little vertical bar + name for each stage of the realm, at its place on the Qi bar
+    private void drawStageMarkers(GuiGraphics g, Realm realm, int barX, int barY, int barW, int barH, float k) {
+        if (maxQi <= 0) return;
+        for (RealmStage stage : realm.getStages()) {
+            int x = barX + (int) ((long) barW * stage.qiRequired() / maxQi);
+            x = Math.max(barX + 1, Math.min(x, barX + barW - 1));
+            int color = qi >= stage.qiRequired() ? COLOR_STAGE_REACHED : COLOR_STAGE_TICK;
+            g.fill(x - 1, barY - 3, x + 1, barY + barH + 3, color);
+            drawText(g, stage.name(), x, barY + barH + 5 * k, 0.8F * k, color);
+        }
+    }
+
     @Override
     public void render(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
         // Full-screen see-through tint (we skip renderBackground so the world stays visible)
@@ -85,7 +100,8 @@ public class QiScreen extends Screen {
         Realm realm = Realm.byLevel(realmLevel);
         Realm next = realm.next();
         boolean noRealmYet = realm.getLevel() == 0; // still Mortal
-        boolean showHearts = realm.getBonusHearts() > 0;
+        int stageIndex = realm.getStageIndex(qi); // 0 for realms without stages
+        boolean showHearts = realm.getBonusHearts(stageIndex) > 0;
 
         // Shrinks everything on small windows / big GUI scales so it always fits
         float k = Math.min(1.0F, this.height / 300.0F);
@@ -105,13 +121,17 @@ public class QiScreen extends Screen {
             drawText(g, FIRST_REALM_MESSAGE, cx, y, msgScale, COLOR_BONUS);
             drawBar(g, barX, Math.round(y + msgHeight + gap), barW, barH);
         } else {
-            float total = (showHearts ? 226.0F : 210.0F) * k;
+            boolean hasStages = realm.hasStages();
+            float stageRoom = hasStages ? 12.0F : 0.0F; // space for the stage names under the bar
+            float total = ((showHearts ? 226.0F : 210.0F) + stageRoom) * k;
             float y = (this.height - total) / 2.0F;
 
             // Title + realm + Qi numbers
             drawText(g, "Cultivation", cx, y, 3.0F * k, COLOR_TITLE);
             y += 36 * k;
-            drawText(g, "Realm: " + realm.getDisplayName(), cx, y, 2.0F * k, COLOR_REALM);
+            String realmText = "Realm: " + realm.getDisplayName();
+            if (hasStages) realmText += " - " + realm.getStage(qi).name();
+            drawText(g, realmText, cx, y, 2.0F * k, COLOR_REALM);
             y += 28 * k;
             drawText(g, "Qi: " + qi + " / " + maxQi, cx, y, 1.5F * k, COLOR_QI_TEXT);
             y += 24 * k;
@@ -119,15 +139,24 @@ public class QiScreen extends Screen {
             // Qi bar + name of the next realm at the end of the bar
             int barY = Math.round(y);
             drawBar(g, barX, barY, barW, barH);
+            if (hasStages) {
+                drawStageMarkers(g, realm, barX, barY, barW, barH, k);
+            }
             if (next != null) {
                 drawTextRight(g, next.getDisplayName(), barX + barW, barY - 11 * k, 1.0F * k, COLOR_BAR_LABEL);
             }
-            y += barH + 16 * k;
+            y += barH + (16 + stageRoom) * k;
 
             // Next realm requirement
-            String nextText = next == null
-                    ? "Highest realm reached"
-                    : "Next: " + next.getDisplayName() + " at " + next.getQiRequired() + " Qi";
+            String nextText;
+            if (hasStages && stageIndex < realm.getStages().size() - 1) {
+                RealmStage nextStage = realm.getStages().get(stageIndex + 1);
+                nextText = "Next stage: " + nextStage.name() + " at " + nextStage.qiRequired() + " Qi";
+            } else if (next == null) {
+                nextText = "Highest realm reached";
+            } else {
+                nextText = "Next: " + next.getDisplayName() + " at " + next.getQiRequired() + " Qi";
+            }
             drawText(g, nextText, cx, y, 1.2F * k, COLOR_NEXT_REALM);
             y += 34 * k;
 
@@ -135,16 +164,16 @@ public class QiScreen extends Screen {
             float bonusScale = 1.3F * k;
             float step = 17 * k;
             if (showHearts) {
-                drawText(g, "+" + realm.getBonusHearts() + " max hearts", cx, y, bonusScale, COLOR_BONUS);
+                drawText(g, "+" + realm.getBonusHearts(stageIndex) + " max hearts", cx, y, bonusScale, COLOR_BONUS);
                 y += step;
             }
-            drawText(g, "+" + String.format(Locale.ROOT, "%.1f", realm.getBonusDamage()) + " attack damage",
+            drawText(g, "+" + String.format(Locale.ROOT, "%.1f", realm.getBonusDamage(stageIndex)) + " attack damage",
                     cx, y, bonusScale, COLOR_BONUS);
             y += step;
-            drawText(g, "+" + Math.round(realm.getBonusSpeed() * 100) + "% movement speed",
+            drawText(g, "+" + Math.round(realm.getBonusSpeed(stageIndex) * 100) + "% movement speed",
                     cx, y, bonusScale, COLOR_BONUS);
             y += step;
-            drawText(g, Math.round(realm.getDamageReduction() * 100) + "% damage reduction",
+            drawText(g, Math.round(realm.getDamageReduction(stageIndex) * 100) + "% damage reduction",
                     cx, y, bonusScale, COLOR_BONUS);
         }
 

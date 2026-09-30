@@ -2,6 +2,7 @@ package net.supernova.mightmayhem.client;
 
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.InputEvent;
+import net.minecraftforge.client.event.RegisterGuiOverlaysEvent;
 import net.minecraftforge.client.event.RegisterKeyMappingsEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
@@ -28,6 +29,12 @@ public class ClientEvents {
         @SubscribeEvent
         public static void onRegisterKeys(RegisterKeyMappingsEvent event) {
             event.register(KeyBinding.OPEN_QI_KEY);
+        }
+
+        // Registers the big "MAJOR BREAKTHROUGH!" text that is drawn on top of the game
+        @SubscribeEvent
+        public static void onRegisterOverlays(RegisterGuiOverlaysEvent event) {
+            event.registerAboveAll("breakthrough", BreakthroughOverlay.OVERLAY);
         }
     }
 }
